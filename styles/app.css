@@ -2040,8 +2040,15 @@ dialog::backdrop {
 
 .manager-category-card .category-icon {
 	display: inline-block;
-	color: #ff806b;
+	color: var(--manager-item-color, #ff806b);
 	font-size: 20px;
+}
+
+.color-field input[type="color"] {
+	width: 64px;
+	height: 42px;
+	padding: 4px;
+	cursor: pointer;
 }
 
 .manager-category-copy {
@@ -2868,3 +2875,25 @@ dialog::backdrop {
 	padding-top: 10px;
 }
 
+.card-category { background: var(--category-color); }
+.card-subcategory { background: var(--subcategory-color, var(--category-color)); }
+
+/* Category colors are shown on the appointment card border only. */
+.card-category,
+.card-subcategory {
+	background: transparent;
+}
+
+.appointment-card {
+	border-left-color: var(--category-color);
+	border-bottom-color: var(--subcategory-color, var(--category-color));
+}
+
+.appointment-card:hover {
+	border-left-color: var(--category-color);
+	border-bottom-color: var(--subcategory-color, var(--category-color));
+}
+
+.manager-category-card .category-icon {
+	color: #ff806b;
+}

@@ -1,1 +1,5 @@
-*.json
+# Dados locais e configurações privadas
+.env
+.env.*
+!.env.example
+/backup/

@@ -69,6 +69,9 @@ let categoryNames = Object.fromEntries(
 let categoryIcons = Object.fromEntries(
 	Object.keys(categoryNames).map((key) => [key, "bookmark"]),
 );
+let categoryColors = Object.fromEntries(
+	Object.keys(categoryNames).map((key) => [key, "#667085"]),
+);
 try {
 	const savedCategories = JSON.parse(
 		localStorage.getItem(CATEGORIES_STORAGE_KEY) || "null",
@@ -85,6 +88,10 @@ try {
 				Object.keys(categoryNames).map((key) => [key, "bookmark"]),
 			),
 			...(savedCategories.icons || {}),
+		};
+		categoryColors = {
+			...Object.fromEntries(Object.keys(categoryNames).map((key) => [key, "#667085"])),
+			...(savedCategories.colors || {}),
 		};
 	}
 } catch (error) {
@@ -251,6 +258,7 @@ function createAgendaPayload(items = appointments) {
 		categories: {
 			names: categoryNames,
 			icons: categoryIcons,
+			colors: categoryColors,
 			subcategories,
 		},
 		appointments: items,
@@ -340,6 +348,7 @@ async function importBackup(file) {
 	const previousCategories = {
 		names: categoryNames,
 		icons: categoryIcons,
+		colors: categoryColors,
 		subcategories,
 	};
 	let importedCategories;
@@ -354,6 +363,10 @@ async function importBackup(file) {
 				),
 				...(backup.categories.icons || {}),
 			};
+			categoryColors = {
+				...Object.fromEntries(Object.keys(categoryNames).map((key) => [key, "#667085"])),
+				...(backup.categories.colors || {}),
+			};
 			Object.values(subcategories).forEach((items) => {
 				items.forEach((item) => {
 					if (!item.icon) item.icon = "label";
@@ -364,15 +377,18 @@ async function importBackup(file) {
 		importedCategories = {
 			names: categoryNames,
 			icons: categoryIcons,
+			colors: categoryColors,
 			subcategories,
 		};
 	} finally {
 		categoryNames = previousCategories.names;
 		categoryIcons = previousCategories.icons;
+		categoryColors = previousCategories.colors;
 		subcategories = previousCategories.subcategories;
 	}
 	categoryNames = importedCategories.names;
 	categoryIcons = importedCategories.icons;
+	categoryColors = importedCategories.colors;
 	subcategories = importedCategories.subcategories;
 	appointments = importedAppointments;
 	populateCategoryOptions();
@@ -415,6 +431,18 @@ function getSubcategory(area, value) {
 	);
 }
 
+function validColor(color, fallback = "#667085") {
+	return /^#[0-9a-f]{6}$/i.test(String(color || "")) ? color : fallback;
+}
+
+function getCategoryColor(categoryId) {
+	return validColor(categoryColors[categoryId]);
+}
+
+function getSubcategoryColor(categoryId, item) {
+	return validColor(item?.color, getCategoryColor(categoryId));
+}
+
 function googleIconMarkup(name, fallback = "") {
 	const icon = String(name || fallback).trim();
 	return icon
@@ -428,6 +456,7 @@ function persistCategories() {
 		JSON.stringify({
 			names: categoryNames,
 			icons: categoryIcons,
+			colors: categoryColors,
 			subcategories,
 		}),
 	);
@@ -438,6 +467,7 @@ function updateManagedCategories(update) {
 		JSON.stringify({
 			names: categoryNames,
 			icons: categoryIcons,
+			colors: categoryColors,
 			subcategories,
 		}),
 	);
@@ -449,6 +479,7 @@ function updateManagedCategories(update) {
 	} catch (error) {
 		categoryNames = previous.names;
 		categoryIcons = previous.icons;
+		categoryColors = previous.colors;
 		subcategories = previous.subcategories;
 		console.error("Não foi possível salvar as categorias.", error);
 		try {
@@ -513,6 +544,7 @@ function renderManagedCategoryList() {
 		const count = (subcategories[key] || []).length;
 		const card = document.createElement("div");
 		card.className = "manager-category-card";
+		card.style.setProperty("--manager-item-color", getCategoryColor(key));
 		card.innerHTML = `${googleIconMarkup(categoryIcons[key], "bookmark")}<span class="manager-category-copy"><strong>${escapeHTML(name)}</strong><small>${count} ${count === 1 ? "subcategoria" : "subcategorias"}</small></span>`;
 		const actions = document.createElement("div");
 		actions.className = "manager-card-actions";
@@ -619,6 +651,7 @@ function deleteManagedCategory(categoryId) {
 	if (!updateManagedCategories(() => {
 		delete categoryNames[categoryId];
 		delete categoryIcons[categoryId];
+		delete categoryColors[categoryId];
 		delete subcategories[categoryId];
 	})) return;
 	populateCategoryOptions();
@@ -703,6 +736,7 @@ function renderManagedSubcategoryList(
 	filtered.forEach((item) => {
 		const card = document.createElement("div");
 		card.className = "manager-category-card";
+		card.style.setProperty("--manager-item-color", getSubcategoryColor(managedCategorySelect.value, item));
 		card.innerHTML = `${googleIconMarkup(item.icon, "label")}<span class="manager-category-copy"><strong>${escapeHTML(item.label)}</strong><small>Subcategoria</small></span>`;
 		const actions = document.createElement("div");
 		actions.className = "manager-card-actions";
@@ -749,6 +783,7 @@ function updateManagedIconFields() {
 		categoryNames[selectedCategory] || "Categoria";
 	renderManagedCategoryList();
 	const categoryIcon = categoryIcons[selectedCategory] || "bookmark";
+	document.getElementById("managedCategoryColor").value = getCategoryColor(selectedCategory);
 	document.getElementById("selectedCategoryHeaderIcon").textContent =
 		categoryIcon;
 	document.getElementById("editCategoryHeaderIcon").textContent =
@@ -772,6 +807,7 @@ function updateManagedIconFields() {
 	managedSubcategoryIcon.value = selectedSubcategory?.icon || "label";
 	managedSubcategoryIconPreview.textContent =
 		selectedSubcategory?.icon || "label";
+	document.getElementById("managedSubcategoryColor").value = getSubcategoryColor(selectedCategory, selectedSubcategory);
 	document.getElementById("saveSubcategoryIconButton").disabled =
 		!selectedSubcategory;
 }
@@ -1338,7 +1374,8 @@ function renderTimeline(options = {}) {
 
 				return `
             <article
-              class="appointment-card ${item.status === "done" ? "is-completed" : ""}"
+			  class="appointment-card ${item.status === "done" ? "is-completed" : ""}"
+			  style="--category-color: ${escapeHTML(getCategoryColor(item.area))}; --subcategory-color: ${escapeHTML(getSubcategoryColor(item.area, subcategory))}"
               data-area="${escapeHTML(item.area)}"
               data-id="${escapeHTML(item.id)}"
               draggable="true"
@@ -1701,6 +1738,7 @@ document.getElementById("saveCategoryButton").addEventListener("click", () => {
 		categoryNames[key] = label;
 		const icon = managedCategoryIcon.value.trim();
 		categoryIcons[key] = icon || "bookmark";
+		categoryColors[key] = validColor(document.getElementById("managedCategoryColor").value);
 	})) return;
 	populateCategoryOptions();
 	openCategoryDetail(key);
@@ -1739,6 +1777,7 @@ document
 			item.label = label;
 			const icon = managedSubcategoryIcon.value.trim();
 			item.icon = icon || "label";
+			item.color = validColor(document.getElementById("managedSubcategoryColor").value, getCategoryColor(key));
 		})) return;
 		updateManagedIconFields();
 		renderManagedSubcategoryList();
@@ -1759,6 +1798,7 @@ document.getElementById("addCategoryButton").addEventListener("click", () => {
 	if (!updateManagedCategories(() => {
 		categoryNames[key] = label;
 		categoryIcons[key] = "bookmark";
+		categoryColors[key] = "#667085";
 		subcategories[key] = [];
 	})) return;
 	newCategoryName.value = "";
@@ -1789,6 +1829,7 @@ document
 				value: `sub-${crypto.randomUUID()}`,
 				label,
 				icon: "label",
+				color: getCategoryColor(key),
 			});
 		})) return;
 		newSubcategoryName.value = "";
