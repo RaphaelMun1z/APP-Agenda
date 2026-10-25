@@ -46,7 +46,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
 	font: inherit;
 }
 
@@ -110,7 +111,8 @@ button {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
 	width: 100%;
 	min-height: 37px;
 	padding: 0 10px;
@@ -123,7 +125,8 @@ button {
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
 	border-color: var(--accent);
 	outline: 2px solid rgba(232, 111, 25, 0.12);
 	outline-offset: -2px;
@@ -514,6 +517,15 @@ button {
 
 .separator {
 	color: #98a2b3;
+}
+
+.card-description {
+	margin: 8px 0 0;
+	color: #475467;
+	font-size: 0.76rem;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
 .appointment-card h3 {
@@ -1065,7 +1077,8 @@ body {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
 	border-color: #3c3f48;
 	border-radius: 8px;
 	background: #22242a;
@@ -1077,7 +1090,8 @@ body {
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
 	border-color: var(--accent);
 	outline-color: rgba(245, 50, 25, 0.2);
 }
@@ -1700,12 +1714,20 @@ dialog::backdrop {
 
 #appointmentDialog .field input,
 #appointmentDialog .field select,
+#appointmentDialog .field textarea,
 #categoriesDialog .field input,
 #categoriesDialog .field select {
 	min-height: 46px;
 	padding: 0 13px;
 	border-radius: 8px;
 	background: #22242a;
+}
+
+#appointmentDialog .field textarea {
+	min-height: 110px;
+	padding: 10px 13px;
+	line-height: 1.45;
+	resize: vertical;
 }
 
 #appointmentDialog .file-input {
@@ -2554,3 +2576,295 @@ dialog::backdrop {
 		justify-content: flex-end;
 	}
 }
+
+
+/* Appointment card refinement */
+.appointment-card {
+	padding: 14px 14px 13px;
+	border: 1px solid #383b45;
+	border-left: 4px solid var(--ufu);
+	border-radius: 11px;
+	background: linear-gradient(145deg, #22242b 0%, #1e2026 100%);
+	box-shadow: 0 5px 16px rgba(0, 0, 0, 0.12);
+	transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.appointment-card[data-area="EBSERH"] { border-left-color: #f53219; }
+.appointment-card[data-area="UFU"] { border-left-color: #f06450; }
+.appointment-card[data-area="TCC"] { border-left-color: #ff907c; }
+.appointment-card[data-area="OUTROS"] { border-left-color: #c27769; }
+
+.appointment-card:hover {
+	transform: translateY(-2px);
+	border-color: #555966;
+	box-shadow: 0 9px 22px rgba(0, 0, 0, 0.22);
+}
+
+.card-category {
+	min-height: 25px;
+	padding-right: 108px;
+	color: #f3f4f6;
+	font-size: 0.72rem;
+	letter-spacing: 0.07em;
+}
+
+.card-category .category-icon {
+	color: #ff806d;
+}
+
+.card-subcategory {
+	margin-top: 5px;
+	padding-right: 8px;
+	color: #c5ccda;
+	font-size: 0.82rem;
+	font-weight: 650;
+	line-height: 1.35;
+}
+
+.card-subcategory .category-icon {
+	margin-top: 1px;
+	color: #98a4b8;
+}
+
+.card-time {
+	min-height: 38px;
+	margin-top: 12px;
+	padding: 8px 10px;
+	border: 1px solid #383b45;
+	border-radius: 7px;
+	background: #191b20;
+	color: #e2e6ee;
+	font-size: 0.75rem;
+	font-weight: 650;
+	flex-wrap: wrap;
+}
+
+.card-time-label {
+	color: #ff917f;
+	font-size: 0.64rem;
+	letter-spacing: 0.08em;
+}
+
+.card-time-separator {
+	color: #8e98a9;
+}
+
+.appointment-card h3 {
+	margin: 10px 0 0;
+	color: #fbfbfc;
+	font-size: 0.98rem;
+	font-weight: 750;
+	line-height: 1.35;
+	letter-spacing: -0.01em;
+}
+
+.card-description {
+	margin: 7px 0 0;
+	color: #b6c0d0;
+	font-size: 0.79rem;
+	line-height: 1.55;
+}
+
+.card-actions {
+	top: 9px;
+	right: 9px;
+	gap: 5px;
+	opacity: 0.78;
+}
+
+.card-actions .icon-button,
+.card-actions .status-button {
+	width: 29px;
+	height: 29px;
+	border-radius: 7px;
+	background: #292b32;
+	color: #c7cfdd;
+}
+
+.card-actions .icon-button:hover,
+.card-actions .status-button:hover {
+	border-color: #737987;
+	background: #383b44;
+}
+
+.appointment-card.is-completed {
+	border-color: #383b45;
+	border-left-color: #626a78;
+	background: #1b1d22;
+}
+
+.appointment-card.is-completed .card-time {
+	border-color: #343740;
+	background: #22242a;
+	color: #9da7b7;
+}
+
+.appointment-card.is-completed .card-description {
+	color: #8792a4;
+}
+
+.day-column.is-past .appointment-card {
+	border-color: #343740;
+	border-left-color: #596170;
+	background: #1b1d22;
+}
+
+.day-column.is-past .card-time {
+	border-color: #343740;
+	background: #22242a;
+	color: #a2acbc;
+}
+
+.day-column.is-past .card-description {
+	color: #939daf;
+}
+
+@media (max-width: 520px) {
+	.appointment-card { padding: 12px; }
+	.card-category { padding-right: 100px; }
+	.card-actions { top: 7px; right: 7px; }
+}
+
+
+/* Make appointment times the most scannable detail on each card. */
+.card-time {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	justify-items: start;
+	gap: 4px;
+	padding: 9px 12px 10px;
+}
+
+.card-time-label {
+	font-size: 0.62rem;
+	line-height: 1;
+}
+
+.card-time-range {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 5px 8px;
+	color: #b9c2d1;
+	font-size: 0.82rem;
+	line-height: 1.2;
+}
+
+.card-time-range strong {
+	color: #ffffff;
+	font-size: 1.22rem;
+	font-weight: 800;
+	letter-spacing: -0.025em;
+	font-variant-numeric: tabular-nums;
+}
+
+.card-time-separator {
+	font-size: 0.76rem;
+	font-weight: 650;
+}
+
+.appointment-card.is-completed .card-time-range strong,
+.day-column.is-past .card-time-range strong {
+	color: #c5ccda;
+}
+
+@media (max-width: 520px) {
+	.card-time-range strong { font-size: 1.12rem; }
+}
+
+
+/* Integrate controls into the card's existing top area without adding height. */
+.card-actions {
+	position: absolute;
+	top: 9px;
+	right: 9px;
+	width: max-content;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	display: flex;
+	gap: 5px;
+	opacity: 1;
+}
+
+.card-category {
+	padding-right: 0;
+}
+
+
+/* The action group rises from the card's top edge like an attached tab. */
+.cards {
+	gap: 42px;
+	padding-top: 40px;
+}
+
+.card-actions {
+	top: -1px;
+	right: -1px;
+	z-index: 2;
+	padding: 3px 4px 0;
+	border: 1px solid #383b45;
+	border-bottom: 0;
+	border-radius: 8px 8px 0 0;
+	background: #22242b;
+	transform: translateY(-100%);
+}
+
+.appointment-card:hover .card-actions,
+.card-actions:focus-within {
+	opacity: 1;
+}
+
+@media (max-width: 520px) {
+	.cards {
+		gap: 38px;
+		padding-top: 36px;
+	}
+}
+
+
+.card-actions {
+	padding: 6px 8px 0;
+	background: #22242b;
+}
+
+.card-actions::after {
+	position: absolute;
+	z-index: 0;
+	right: 0;
+	bottom: -2px;
+	left: 0;
+	height: 3px;
+	background: #22242b;
+	content: "";
+	pointer-events: none;
+}
+
+.appointment-card {
+	border-top-right-radius: 0;
+}
+
+
+
+.card-actions > button {
+	position: relative;
+	z-index: 1;
+}
+
+.card-subcategory {
+	margin-top: 10px;
+}
+
+
+.card-subcategory {
+	margin-top: 16px;
+}
+
+
+.card-subcategory {
+	margin-top: 8px;
+	padding-top: 10px;
+}
+

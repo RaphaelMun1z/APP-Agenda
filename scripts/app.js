@@ -123,9 +123,7 @@ const appointmentSubcategory = document.getElementById(
 );
 const appointmentScoreField = document.getElementById("appointmentScoreField");
 const appointmentScore = document.getElementById("appointmentScore");
-const appointmentFiles = document.getElementById("appointmentFiles");
-const existingAttachments = document.getElementById("existingAttachments");
-const pendingAttachments = document.getElementById("pendingAttachments");
+const appointmentDescription = document.getElementById("appointmentDescription");
 const saveAppointmentButton = document.getElementById("saveAppointmentButton");
 const saveAppointmentIcon = document.getElementById("saveAppointmentIcon");
 const saveAppointmentLabel = document.getElementById("saveAppointmentLabel");
@@ -175,12 +173,8 @@ const managedSubcategoryIconPreview = document.getElementById(
 );
 
 let appointments = loadAppointments();
-const attachmentStore = new AttachmentStore();
-let attachmentStorageReady = Promise.resolve();
 let shouldPositionTimeline = true;
 let draggedAppointmentId = null;
-let pendingFiles = [];
-let attachmentsMarkedForRemoval = new Set();
 const customSelectInstances = new WeakMap();
 let activeCustomSelect = null;
 let panning = false;
@@ -189,27 +183,7 @@ let panStartScrollLeft = 0;
 let panMoved = false;
 let activePanPointerId = null;
 
-// Backup files and activity persistence.
-function readFileAsDataURL(file) {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => resolve(reader.result);
-		reader.onerror = () =>
-			reject(reader.error || new Error("Falha ao ler o arquivo."));
-		reader.readAsDataURL(file);
-	});
-}
-
-async function serializeAttachmentFile(file) {
-	return {
-		id: crypto.randomUUID(),
-		name: file.name,
-		type: file.type || "application/octet-stream",
-		size: file.size,
-		blob: file,
-	};
-}
-
+// Activity persistence.
 function localISODate(date = new Date()) {
 	const year = date.getFullYear();
 	const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -248,29 +222,7 @@ function normalizeAppointment(item) {
 		subcategory,
 		score: area === "UFU" ? (item.score ?? "") : "",
 		status: item.status === "done" ? "done" : "pending",
-		attachments: Array.isArray(item.attachments)
-			? item.attachments
-					.filter(
-						(attachment) =>
-							attachment && attachment.id && attachment.name,
-					)
-					.map((attachment) => ({
-						id: String(attachment.id),
-						name: String(attachment.name),
-						type: String(
-							attachment.type || "application/octet-stream",
-						),
-						size: Number(attachment.size || 0),
-						...(typeof attachment.storageId === "string" &&
-						attachment.storageId
-							? { storageId: attachment.storageId }
-							: {}),
-						...(typeof attachment.dataUrl === "string" &&
-						attachment.dataUrl
-							? { dataUrl: attachment.dataUrl }
-							: {}),
-					}))
-			: [],
+		description: String(item.description || ""),
 	};
 }
 
@@ -323,48 +275,25 @@ function parseAgendaPayload(data) {
 	return source.map(normalizeAppointment);
 }
 
-async function saveAppointments(items) {
-	await attachmentStorageReady;
+function saveAppointments(items) {
 	const previousCategories = localStorage.getItem(CATEGORIES_STORAGE_KEY);
 	try {
-		const prepared = await attachmentStore.prepare(items);
-		await attachmentStore.write(prepared.files);
-		try {
-			persistCategories();
-			localStorage.setItem(
-				STORAGE_KEY,
-				JSON.stringify(createAgendaPayload(prepared.appointments)),
-			);
-		} catch (error) {
-			// setItem is atomic; a failed agenda write leaves its previous value intact.
-			try {
-				if (previousCategories === null)
-					localStorage.removeItem(CATEGORIES_STORAGE_KEY);
-				else
-					localStorage.setItem(
-						CATEGORIES_STORAGE_KEY,
-						previousCategories,
-					);
-			} catch (rollbackError) {
-				console.error(
-					"Falha ao restaurar as categorias anteriores.",
-					rollbackError,
-				);
-			}
-			throw error;
-		}
-		appointments = prepared.appointments;
-		try {
-			await attachmentStore.removeUnused(appointments);
-		} catch (error) {
-			console.warn("Não foi possível limpar os anexos removidos.", error);
-		}
+		persistCategories();
+		localStorage.setItem(
+			STORAGE_KEY,
+			JSON.stringify(createAgendaPayload(items)),
+		);
+		appointments = items;
 		return true;
 	} catch (error) {
-		console.error("Não foi possível salvar os dados no navegador.", error);
-		window.alert(
-			"Não foi possível salvar a atividade e seus anexos. Os dados anteriores foram preservados. Tente novamente ou exporte um backup.",
-		);
+		try {
+			if (previousCategories === null) localStorage.removeItem(CATEGORIES_STORAGE_KEY);
+			else localStorage.setItem(CATEGORIES_STORAGE_KEY, previousCategories);
+		} catch (rollbackError) {
+			console.error("Falha ao restaurar as categorias anteriores.", rollbackError);
+		}
+		console.error("N?o foi poss?vel salvar os dados no navegador.", error);
+		window.alert("N?o foi poss?vel salvar a atividade. Os dados anteriores foram preservados. Tente novamente ou exporte um backup.");
 		return false;
 	}
 }
@@ -372,12 +301,7 @@ async function saveAppointments(items) {
 async function exportBackup() {
 	exportBackupButton.disabled = true;
 	try {
-		await attachmentStorageReady;
 		const payload = createAgendaPayload();
-		payload.appointments = await attachmentStore.portableAppointments(
-			appointments,
-			readFileAsDataURL,
-		);
 		const content = JSON.stringify(payload, null, 2);
 		const blob = new Blob([content], {
 			type: "application/json;charset=utf-8",
@@ -402,7 +326,6 @@ async function exportBackup() {
 }
 
 async function importBackup(file) {
-	await attachmentStorageReady;
 	const backup = JSON.parse(await file.text());
 	const backupItems = Array.isArray(backup)
 		? backup
@@ -448,10 +371,6 @@ async function importBackup(file) {
 		categoryIcons = previousCategories.icons;
 		subcategories = previousCategories.subcategories;
 	}
-	// Imported files stay in memory until an activity is explicitly saved.
-	importedAppointments =
-		await attachmentStore.stageImport(importedAppointments);
-
 	categoryNames = importedCategories.names;
 	categoryIcons = importedCategories.icons;
 	subcategories = importedCategories.subcategories;
@@ -486,12 +405,6 @@ function escapeHTML(value) {
 		.replaceAll(">", "&gt;")
 		.replaceAll('"', "&quot;")
 		.replaceAll("'", "&#039;");
-}
-
-function formatFileSize(bytes) {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function getSubcategory(area, value) {
@@ -1337,60 +1250,25 @@ function getCurrentPeriod() {
 function formatTimeRange(item) {
 	const start = item.startTime || item.time || "";
 	const end = item.endTime || "";
+	let range = "N\u00e3o definido";
 
 	if (start && end) {
-		return `
-          <span class="card-time-label">Horário</span>
-          <span>Das ${escapeHTML(start)}</span>
-          <span class="card-time-separator">até</span>
-          <span>${escapeHTML(end)}</span>
-        `;
-	}
-
-	if (start) {
-		return `
-          <span class="card-time-label">Horário</span>
-          <span>A partir das ${escapeHTML(start)}</span>
-        `;
-	}
-
-	if (end) {
-		return `
-          <span class="card-time-label">Horário</span>
-          <span>Até ${escapeHTML(end)}</span>
-        `;
+		range = `Das <strong>${escapeHTML(start)}</strong><span class="card-time-separator">at\u00e9</span><strong>${escapeHTML(end)}</strong>`;
+	} else if (start) {
+		range = `A partir das <strong>${escapeHTML(start)}</strong>`;
+	} else if (end) {
+		range = `At\u00e9 <strong>${escapeHTML(end)}</strong>`;
 	}
 
 	return `
-        <span class="card-time-label">Horário</span>
-        <span>Não definido</span>
-      `;
+		<span class="card-time-label">Hor\u00e1rio</span>
+		<span class="card-time-range">${range}</span>
+	`;
 }
 
-function renderAttachmentButtons(item) {
-	if (!item.attachments.length) return "";
-
-	return `
-        <div class="attachments">
-          ${item.attachments
-				.map(
-					(attachment) => `
-            <button
-              class="attachment-button"
-              type="button"
-              draggable="false"
-              data-action="open-attachment"
-              data-attachment-id="${escapeHTML(attachment.id)}"
-              title="${escapeHTML(attachment.name)}"
-            >
-              <span>📎</span>
-              <span class="attachment-name">${escapeHTML(attachment.name)}</span>
-            </button>
-          `,
-				)
-				.join("")}
-        </div>
-      `;
+function renderDescription(item) {
+	if (!item.description) return "";
+	return `<p class="card-description">${escapeHTML(item.description)}</p>`;
 }
 
 function renderTimeline(options = {}) {
@@ -1501,7 +1379,7 @@ function renderTimeline(options = {}) {
               `
 						: ""
 				}
-              ${renderAttachmentButtons(item)}
+              ${renderDescription(item)}
             </article>
           `;
 			})
@@ -1557,7 +1435,7 @@ function positionTimelineAtCurrentDate() {
 	timeline.scrollLeft = target.offsetLeft;
 }
 
-// Activity forms and attachment controls.
+// Activity form controls.
 function updateScoreField() {
 	const isUFU = appointmentArea.value === "UFU";
 	appointmentScoreField.hidden = !isUFU;
@@ -1598,47 +1476,8 @@ function populateSubcategories(selectedValue = "") {
 	syncCustomSelect(appointmentArea);
 }
 
-function renderExistingAttachments(item) {
-	existingAttachments.innerHTML = "";
-
-	item.attachments
-		.filter((attachment) => !attachmentsMarkedForRemoval.has(attachment.id))
-		.forEach((attachment) => {
-			const row = document.createElement("div");
-			row.className = "attachment-editor-item";
-			row.innerHTML = `
-            <span class="attachment-editor-name">📎 ${escapeHTML(attachment.name)} · ${escapeHTML(formatFileSize(attachment.size))}</span>
-            <button class="remove-attachment-button" type="button" data-remove-existing="${escapeHTML(attachment.id)}" aria-label="Remover anexo">×</button>
-          `;
-			existingAttachments.appendChild(row);
-		});
-}
-
-function renderPendingAttachments() {
-	pendingAttachments.innerHTML = "";
-
-	pendingFiles.forEach((file, index) => {
-		const row = document.createElement("div");
-		row.className = "attachment-editor-item";
-		row.innerHTML = `
-          <span class="attachment-editor-name">Novo: ${escapeHTML(file.name)} · ${escapeHTML(formatFileSize(file.size))}</span>
-          <button class="remove-attachment-button" type="button" data-remove-pending="${index}" aria-label="Remover arquivo selecionado">×</button>
-        `;
-		pendingAttachments.appendChild(row);
-	});
-}
-
-function resetAttachmentEditor() {
-	pendingFiles = [];
-	attachmentsMarkedForRemoval = new Set();
-	appointmentFiles.value = "";
-	existingAttachments.innerHTML = "";
-	pendingAttachments.innerHTML = "";
-}
-
 function openNewAppointment() {
 	appointmentForm.reset();
-	resetAttachmentEditor();
 	appointmentId.value = "";
 	appointmentDate.value = localISODate();
 	appointmentArea.value = "";
@@ -1654,9 +1493,9 @@ function openEditAppointment(id) {
 	const item = appointments.find((appointment) => appointment.id === id);
 	if (!item) return;
 
-	resetAttachmentEditor();
 	appointmentId.value = item.id;
 	appointmentTitle.value = item.title;
+	appointmentDescription.value = item.description || "";
 	appointmentDate.value = item.date;
 	appointmentStartTime.value = item.startTime || item.time || "";
 	appointmentEndTime.value = item.endTime || "";
@@ -1664,7 +1503,6 @@ function openEditAppointment(id) {
 	syncCustomSelect(appointmentArea);
 	appointmentScore.value = item.area === "UFU" ? (item.score ?? "") : "";
 	populateSubcategories(item.subcategory);
-	renderExistingAttachments(item);
 	dialogTitle.textContent = "Editar compromisso";
 	appointmentDialog.showModal();
 	requestAnimationFrame(() => appointmentTitle.focus());
@@ -1708,35 +1546,6 @@ function toggleAppointmentStatus(id) {
 
 	item.status = item.status === "done" ? "pending" : "done";
 	renderTimeline({ preserveScroll: true });
-}
-
-async function openAttachment(id) {
-	try {
-		await attachmentStorageReady;
-		const attachment = appointments
-			.flatMap((item) => item.attachments || [])
-			.find((item) => item.id === id);
-
-		const blob = attachment && (await attachmentStore.blobFor(attachment));
-		if (!blob)
-			throw new Error(
-				"O conteúdo deste anexo não está disponível no navegador ou no backup importado.",
-			);
-
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement("a");
-		link.href = url;
-		link.download = attachment.name;
-		link.target = "_blank";
-		link.rel = "noopener";
-		document.body.appendChild(link);
-		link.click();
-		link.remove();
-		window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-	} catch (error) {
-		console.error("Falha ao abrir anexo.", error);
-		window.alert(error.message);
-	}
 }
 
 function clearDropTargets() {
@@ -1995,31 +1804,6 @@ appointmentArea.addEventListener("change", () => {
 	updateScoreField();
 });
 
-appointmentFiles.addEventListener("change", () => {
-	pendingFiles.push(...Array.from(appointmentFiles.files));
-	appointmentFiles.value = "";
-	renderPendingAttachments();
-});
-
-existingAttachments.addEventListener("click", (event) => {
-	const button = event.target.closest("[data-remove-existing]");
-	if (!button) return;
-
-	attachmentsMarkedForRemoval.add(button.dataset.removeExisting);
-	const item = appointments.find(
-		(appointment) => appointment.id === appointmentId.value,
-	);
-	if (item) renderExistingAttachments(item);
-});
-
-pendingAttachments.addEventListener("click", (event) => {
-	const button = event.target.closest("[data-remove-pending]");
-	if (!button) return;
-
-	pendingFiles.splice(Number(button.dataset.removePending), 1);
-	renderPendingAttachments();
-});
-
 appointmentForm.addEventListener("submit", async (event) => {
 	event.preventDefault();
 	if (!appointmentArea.value) {
@@ -2040,14 +1824,6 @@ appointmentForm.addEventListener("submit", async (event) => {
 		existingIndex >= 0 ? appointments[existingIndex] : null;
 
 	try {
-		const keptAttachments = (existingItem?.attachments || []).filter(
-			(attachment) => !attachmentsMarkedForRemoval.has(attachment.id),
-		);
-
-		const newAttachments = [];
-		for (const file of pendingFiles) {
-			newAttachments.push(await serializeAttachmentFile(file));
-		}
 
 		const data = {
 			id,
@@ -2060,7 +1836,7 @@ appointmentForm.addEventListener("submit", async (event) => {
 			score:
 				appointmentArea.value === "UFU" ? appointmentScore.value : "",
 			status: existingItem?.status || "pending",
-			attachments: [...keptAttachments, ...newAttachments],
+			description: appointmentDescription.value.trim(),
 		};
 
 		if (!data.title || !data.date) return;
@@ -2069,7 +1845,7 @@ appointmentForm.addEventListener("submit", async (event) => {
 		if (existingIndex >= 0) nextAppointments[existingIndex] = data;
 		else nextAppointments.push(data);
 
-		if (!(await saveAppointments(nextAppointments))) return;
+		if (!saveAppointments(nextAppointments)) return;
 		updateSubcategoryFilter();
 		shouldPositionTimeline = false;
 		renderTimeline({ focusDate: data.date });
@@ -2093,11 +1869,10 @@ timeline.addEventListener("click", (event) => {
 	const button = event.target.closest("[data-action]");
 	if (!button) return;
 
-	const { action, id, attachmentId } = button.dataset;
+	const { action, id } = button.dataset;
 	if (action === "toggle-status") toggleAppointmentStatus(id);
 	if (action === "edit") openEditAppointment(id);
 	if (action === "delete") deleteAppointment(id);
-	if (action === "open-attachment") openAttachment(attachmentId);
 });
 
 timeline.addEventListener("dragstart", (event) => {
@@ -2307,17 +2082,18 @@ for (const key of LEGACY_STORAGE_KEYS) {
 		);
 	}
 }
-attachmentStorageReady = AttachmentStore.deleteDatabase(
-	"schedlaunch-attachments",
-)
-	.catch((error) => {
-		console.warn(
-			"Não foi possível remover o banco antigo de anexos.",
-			error,
-		);
-	})
-	.finally(() => {
-		initializeAgenda();
-		appRoot.inert = false;
-		appRoot.removeAttribute("aria-busy");
-	});
+try {
+	localStorage.setItem(STORAGE_KEY, JSON.stringify(createAgendaPayload(appointments)));
+} catch (error) {
+	console.warn("N?o foi poss?vel remover os metadados de anexos antigos.", error);
+}
+try {
+	const deletion = indexedDB.deleteDatabase("schedlaunch-attachments-v2");
+	deletion.onerror = () => console.warn("N?o foi poss?vel apagar os arquivos anexados antigos.");
+} catch (error) {
+	console.warn("N?o foi poss?vel apagar o banco antigo de anexos.", error);
+}
+initializeAgenda();
+appRoot.inert = false;
+appRoot.removeAttribute("aria-busy");
+
