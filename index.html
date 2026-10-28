@@ -50,8 +50,21 @@
 						</div>
 					</div>
 				</div>
+				<button
+					class="filters-toggle"
+					id="toggleFiltersButton"
+					type="button"
+					aria-controls="filtersToolbar"
+					aria-expanded="false"
+					aria-label="Maximizar filtros"
+					title="Maximizar filtros"
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+						<path d="m6 14 6-6 6 6" />
+					</svg>
+				</button>
 			</header>
-			<section class="toolbar" aria-label="Filtros da agenda">
+			<section class="toolbar" id="filtersToolbar" aria-label="Filtros da agenda" hidden>
 				<div class="field date-field">
 					<label for="dateFilter">Data de entrega</label>
 					<input id="dateFilter" type="date" />

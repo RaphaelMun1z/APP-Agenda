@@ -1,5 +1,7 @@
 const STORAGE_KEY = "agendaLinhaDoTempoV2";
 const CATEGORIES_STORAGE_KEY = "agendaLinhaDoTempoCategoriesV2";
+const BACKUP_DIRECTORY_DB = "agendaBackupSettings";
+const BACKUP_DIRECTORY_STORE = "settings";
 const LEGACY_STORAGE_KEYS = [
 	"agendaLinhaDoTempoV1",
 	"agendaLinhaDoTempoCategoriesV1",
@@ -111,6 +113,8 @@ const periodFilter = document.getElementById("periodFilter");
 const categoryFilter = document.getElementById("categoryFilter");
 const subcategoryFilter = document.getElementById("subcategoryFilter");
 const clearFiltersButton = document.getElementById("clearFiltersButton");
+const toggleFiltersButton = document.getElementById("toggleFiltersButton");
+const filtersToolbar = document.getElementById("filtersToolbar");
 const timelineSummary = document.getElementById("timelineSummary");
 const exportBackupButton = document.getElementById("exportBackupButton");
 const importBackupButton = document.getElementById("importBackupButton");
@@ -284,8 +288,9 @@ function parseAgendaPayload(data) {
 }
 
 function saveAppointments(items) {
-	const previousCategories = localStorage.getItem(CATEGORIES_STORAGE_KEY);
+	let previousCategories;
 	try {
+		previousCategories = localStorage.getItem(CATEGORIES_STORAGE_KEY);
 		persistCategories();
 		localStorage.setItem(
 			STORAGE_KEY,
@@ -296,12 +301,12 @@ function saveAppointments(items) {
 	} catch (error) {
 		try {
 			if (previousCategories === null) localStorage.removeItem(CATEGORIES_STORAGE_KEY);
-			else localStorage.setItem(CATEGORIES_STORAGE_KEY, previousCategories);
+			else if (previousCategories !== undefined) localStorage.setItem(CATEGORIES_STORAGE_KEY, previousCategories);
 		} catch (rollbackError) {
 			console.error("Falha ao restaurar as categorias anteriores.", rollbackError);
 		}
-		console.error("N?o foi poss?vel salvar os dados no navegador.", error);
-		window.alert("N?o foi poss?vel salvar a atividade. Os dados anteriores foram preservados. Tente novamente ou exporte um backup.");
+		console.error("Não foi possível salvar os dados no navegador.", error);
+		window.alert("Não foi possível salvar as alterações. Os dados anteriores foram preservados. Tente novamente ou exporte um backup.");
 		return false;
 	}
 }
@@ -314,15 +319,34 @@ async function exportBackup() {
 		const blob = new Blob([content], {
 			type: "application/json;charset=utf-8",
 		});
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement("a");
+		const filename = `agenda-${localISODate()}.json`;
 
-		link.href = url;
-		link.download = `agenda-${localISODate()}.json`;
-		document.body.appendChild(link);
-		link.click();
-		link.remove();
-		window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+		if (window.showDirectoryPicker) {
+			let directory = await getBackupDirectory();
+			if (directory) {
+				const permission = await directory.queryPermission({ mode: "readwrite" });
+				if (permission !== "granted") directory = null;
+			}
+			if (!directory) {
+				directory = await window.showDirectoryPicker({ mode: "readwrite", startIn: "documents" });
+				await saveBackupDirectory(directory);
+			}
+			const permission = await directory.requestPermission({ mode: "readwrite" });
+			if (permission !== "granted") throw new Error("Permissão para gravar na pasta não concedida.");
+			const fileHandle = await directory.getFileHandle(filename, { create: true });
+			const writable = await fileHandle.createWritable();
+			await writable.write(blob);
+			await writable.close();
+		} else {
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = filename;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+		}
 	} catch (error) {
 		console.error("Falha ao exportar o backup.", error);
 		window.alert(
@@ -331,6 +355,34 @@ async function exportBackup() {
 	} finally {
 		exportBackupButton.disabled = false;
 	}
+}
+
+function openBackupSettings() {
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.open(BACKUP_DIRECTORY_DB, 1);
+		request.onupgradeneeded = () => request.result.createObjectStore(BACKUP_DIRECTORY_STORE);
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+}
+
+async function getBackupDirectory() {
+	const db = await openBackupSettings();
+	return new Promise((resolve, reject) => {
+		const request = db.transaction(BACKUP_DIRECTORY_STORE).objectStore(BACKUP_DIRECTORY_STORE).get("directory");
+		request.onsuccess = () => { db.close(); resolve(request.result || null); };
+		request.onerror = () => { db.close(); reject(request.error); };
+	});
+}
+
+async function saveBackupDirectory(directory) {
+	const db = await openBackupSettings();
+	return new Promise((resolve, reject) => {
+		const transaction = db.transaction(BACKUP_DIRECTORY_STORE, "readwrite");
+		transaction.objectStore(BACKUP_DIRECTORY_STORE).put(directory, "directory");
+		transaction.oncomplete = () => { db.close(); resolve(); };
+		transaction.onerror = () => { db.close(); reject(transaction.error); };
+	});
 }
 
 async function importBackup(file) {
@@ -390,7 +442,13 @@ async function importBackup(file) {
 	categoryIcons = importedCategories.icons;
 	categoryColors = importedCategories.colors;
 	subcategories = importedCategories.subcategories;
-	appointments = importedAppointments;
+	if (!saveAppointments(importedAppointments)) {
+		categoryNames = previousCategories.names;
+		categoryIcons = previousCategories.icons;
+		categoryColors = previousCategories.colors;
+		subcategories = previousCategories.subcategories;
+		return;
+	}
 	populateCategoryOptions();
 
 	dateFilter.value = "";
@@ -1552,7 +1610,8 @@ function deleteAppointment(id) {
 	const confirmed = window.confirm(`Excluir o compromisso "${item.title}"?`);
 	if (!confirmed) return;
 
-	appointments = appointments.filter((appointment) => appointment.id !== id);
+	const nextAppointments = appointments.filter((appointment) => appointment.id !== id);
+	if (!saveAppointments(nextAppointments)) return;
 	updateSubcategoryFilter();
 	renderTimeline({ preserveScroll: true });
 }
@@ -1571,7 +1630,10 @@ function moveAppointment(id, targetDate) {
 		return false;
 	}
 
-	item.date = targetDate;
+	const nextAppointments = appointments.map((appointment) =>
+		appointment.id === id ? { ...appointment, date: targetDate } : appointment,
+	);
+	if (!saveAppointments(nextAppointments)) return false;
 	updateSubcategoryFilter();
 	renderTimeline({ focusDate: targetDate });
 	return true;
@@ -1581,7 +1643,11 @@ function toggleAppointmentStatus(id) {
 	const item = appointments.find((appointment) => appointment.id === id);
 	if (!item) return;
 
-	item.status = item.status === "done" ? "pending" : "done";
+	const status = item.status === "done" ? "pending" : "done";
+	const nextAppointments = appointments.map((appointment) =>
+		appointment.id === id ? { ...appointment, status } : appointment,
+	);
+	if (!saveAppointments(nextAppointments)) return;
 	renderTimeline({ preserveScroll: true });
 }
 
@@ -2056,6 +2122,16 @@ clearFiltersButton.addEventListener("click", () => {
 	renderTimeline();
 });
 
+toggleFiltersButton.addEventListener("click", () => {
+	closeCustomSelect();
+	filtersToolbar.hidden = !filtersToolbar.hidden;
+	const expanded = !filtersToolbar.hidden;
+	const label = expanded ? "Minimizar filtros" : "Maximizar filtros";
+	toggleFiltersButton.setAttribute("aria-expanded", String(expanded));
+	toggleFiltersButton.setAttribute("aria-label", label);
+	toggleFiltersButton.title = label;
+});
+
 timeline.addEventListener(
 	"wheel",
 	(event) => {
@@ -2122,11 +2198,6 @@ for (const key of LEGACY_STORAGE_KEYS) {
 			error,
 		);
 	}
-}
-try {
-	localStorage.setItem(STORAGE_KEY, JSON.stringify(createAgendaPayload(appointments)));
-} catch (error) {
-	console.warn("N?o foi poss?vel remover os metadados de anexos antigos.", error);
 }
 try {
 	const deletion = indexedDB.deleteDatabase("schedlaunch-attachments-v2");
